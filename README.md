@@ -56,7 +56,7 @@ in camFusuin_Student.cpp
 # 5. FP.5 Performance Evaluation 1
 TTC from Lidar is not always correct because of some outliers and some unstable points from preceding vehicle's front mirrors, those need to be filtered out.
 
-Example of errors in Lidar TTC shown below, where first TTC was ~13 s, and it jumped to ~10.9 s then decreased to ~8.09 s. The error between Lidar TTC and Camera TTC decreases from 1.84s to 0.04s and then increases to 1.22s
+Example of errors in Lidar TTC shown below, where first TTC was ~13 s, and it decreased to ~10.9 s then decreased to ~8.09 s. The error between Lidar TTC and Camera TTC decreases from 1.84s to 0.04s and then increases to 1.22s
 
 <img src="images/KITTI/img2.png" width="779" height="414" />
 <img src="images/KITTI/fig1.png" width="779" height="414" />
