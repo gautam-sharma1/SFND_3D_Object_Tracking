@@ -33,3 +33,38 @@ In this final project, you will implement the missing parts in the schematic. To
 2. Make a build directory in the top level project directory: `mkdir build && cd build`
 3. Compile: `cmake .. && make`
 4. Run it: `./3D_object_tracking`.
+
+## Write Up :
+
+# 1. FP.1 Match 3D Objects
+In this part, we try to match 3D objects in different frames using Features extractions and matching.
+Completed in camFusion_student.cpp.
+
+# 2. FP.2 Compute Lidar-based TTC
+In this part we compute time-to-collision for all matched 3D objects using only Lidar measurements from the matched bounding boxes between current and previous frame.
+
+We do this by computing mean X distance between ego car and preceding vehicles in the current and previous frame, then we use the math equations shown below. Completed in camFusion_student.cpp.
+
+# 3. FP.3 Associate Keypoint Correspondences with Bounding Boxes
+In this part we Prepare the TTC computation based on camera measurements by associating keypoint correspondences to the bounding boxes which enclose them. Completed in camFusion_student.cpp.
+
+# 4. FP.4 Compute Camera-based TTC
+In this part we Compute the time-to-collision in second for all matched 3D objects using only keypoint correspondences from the matched bounding boxes between current and previous frame.
+
+in camFusuin_Student.cpp
+
+# 5. FP.5 Performance Evaluation 1
+TTC from Lidar is not always correct because of some outliers and some unstable points from preceding vehicle's front mirrors, those need to be filtered out.
+
+Example of errors in Lidar TTC shown below, where first TTC was ~13 s, and it jumped to ~10.9 s then decreased to ~8.09 s. The error between Lidar TTC and Camera TTC decreases from 1.84s to 0.04s and then increases to 1.22s
+
+<img src="images/KITTI/img2.png" width="779" height="414" />
+<img src="images/KITTI/fig1.png" width="779" height="414" />
+<img src="images/KITTI/fig3.png" width="779" height="414" />
+
+# 6. FP.6 Performance Evaluation 2
+From the previous project top 3 detector/descriptor has been seletected in terms of their performance on accuracy and speed.
+
+Like Lidar, TTC from camera is not always correct as when get a robust clusterKptMatchesWithROI can get a stable TTC from Camera. If the result get unstable, It's probably the worse keypints matches.
+
+It can be seen from the last image that Camera TTC is 9.31 whereas Lidar TTC 8.09. It can be observed that even a error of 1.31 seconds is enough to cause an accident.
