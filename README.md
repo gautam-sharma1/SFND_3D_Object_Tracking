@@ -40,18 +40,259 @@ In this final project, you will implement the missing parts in the schematic. To
 In this part, we try to match 3D objects in different frames using Features extractions and matching.
 Completed in camFusion_student.cpp.
 
+```cpp
+void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
+{   
+    // NOTE: After calling a cv::DescriptorMatcher::match function, each DMatch
+    // contains two keypoint indices, queryIdx and trainIdx, based on the order of image arguments to match.
+    // https://docs.opencv.org/4.1.0/db/d39/classcv_1_1DescriptorMatcher.html#a0f046f47b68ec7074391e1e85c750cba
+    // prevFrame.keypoints is indexed by queryIdx
+    // currFrame.keypoints is indexed by trainIdx
+
+    int p = prevFrame.boundingBoxes.size();
+    int c = currFrame.boundingBoxes.size();
+    int pt_counts[p][c];
+
+
+    for(auto it = matches.begin(); it<matches.end(); it++){
+        cv::KeyPoint query = prevFrame.keypoints[it->queryIdx];
+        auto query_pt = cv::Point(query.pt.x, query.pt.y);
+        bool query_found = false;
+
+        cv::KeyPoint train = currFrame.keypoints[it->trainIdx];
+        auto train_pt = cv::Point(train.pt.x, train.pt.y);
+        bool train_found = false;
+
+        std::vector<int> query_id, train_id;
+        for (int i = 0; i < p; i++) 
+        {
+            if (prevFrame.boundingBoxes[i].roi.contains(query_pt))            
+             {
+                query_found = true;
+                query_id.push_back(i);
+             }
+             else{
+                 continue;
+             }
+        }
+        for (int i = 0; i < c; i++) 
+        {
+            if (currFrame.boundingBoxes[i].roi.contains(train_pt))            
+            {
+                train_found= true;
+                train_id.push_back(i);
+            }
+            else{
+                 continue;
+             }
+        }
+
+        if (query_found && train_found) 
+        {
+            for (auto id_prev: query_id)
+                for (auto id_curr: train_id)
+                     pt_counts[id_prev][id_curr] += 1;
+        }
+
+    }
+//Getting bounding boxes with maximum number of keypoints between previous and current frames.
+     for (int i = 0; i < p; i++)
+    {  
+         int max_count = 0;
+         int id_max = 0;
+         for (int j = 0; j < c; j++)
+             if (pt_counts[i][j] > max_count)
+             {  
+                  max_count = pt_counts[i][j];
+                  id_max = j;
+             }
+          //bbBestMatches[i] = id_max;
+          bbBestMatches.insert({i,id_max}); //Associating previous bounding box with current bounding box having max number of correspondances.
+    } 
+}
+```
+
+
 # 2. FP.2 Compute Lidar-based TTC
 In this part we compute time-to-collision for all matched 3D objects using only Lidar measurements from the matched bounding boxes between current and previous frame.
 
+```cpp
+void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
+                     std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC)
+{
+    double dT = 0.1;        // time between two measurements in seconds
+    constexpr double laneWidth = 4.0; // assumed width of the ego lane
+
+    // find closest distance to Lidar points within ego lane
+    double minXPrev = 1e9, minXCurr = 1e9;
+    if(lidarPointsPrev.size()){
+    for (auto it = lidarPointsPrev.begin(); it != lidarPointsPrev.end(); ++it)
+    {   if(-laneWidth/2 <=(it->y) && (it->y)<=laneWidth/2){
+        minXPrev = minXPrev > it->x ? it->x : minXPrev;
+    }
+    }
+    }
+
+    if(lidarPointsCurr.size()){
+    for (auto it = lidarPointsCurr.begin(); it != lidarPointsCurr.end(); ++it)
+    {    if(-laneWidth/2 <=(it->y) && (it->y)<=laneWidth/2){
+        minXCurr = minXCurr > it->x ? it->x : minXCurr;
+    }
+    }
+    }
+
+    if (minXCurr>minXPrev){ //If the speed of the vehicle in front is greater than the preceeding vehicle can nver collide with it.
+        TTC = INT_FAST16_MAX;
+        return;
+    }
+    // compute TTC from both measurements
+    TTC = minXCurr * dT / (minXPrev - minXCurr);
+}
+```
 We do this by computing mean X distance between ego car and preceding vehicles in the current and previous frame, then we use the math equations shown below. Completed in camFusion_student.cpp.
 
 # 3. FP.3 Associate Keypoint Correspondences with Bounding Boxes
 In this part we Prepare the TTC computation based on camera measurements by associating keypoint correspondences to the bounding boxes which enclose them. Completed in camFusion_student.cpp.
 
+```cpp
+template <class T> //Template class to return bounding box roi.x for prev and current frames
+T box_x (const double &shrinkfactor, double roi_x, double boundingbox_w) {
+ return roi_x + shrinkfactor*boundingbox_w / 2.0;
+};
+
+template <class T> //Template class to return bounding box roi.y for prev and current frames
+T box_y (const double &shrinkfactor, double roi_y, double boundingbox_h) {
+ return roi_y + shrinkfactor*boundingbox_h/ 2.0;
+};
+
+template <class T> //Template class to return bounding box roi.width for prev and current frames
+T box_width (const double &shrinkfactor, double roi_width) {
+ return roi_width * (1-shrinkfactor);
+};
+
+template <class T> //Template class to return bounding box roi.height for prev and current frames
+T box_height (const double &shrinkfactor, double roi_height) {
+ return roi_height * (1-shrinkfactor);
+};
+
+void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches)
+{
+
+
+
+
+        cv::KeyPoint tempCurrKp, tempPrevKp;
+        vector<cv::DMatch> mtchsBB;
+        vector<double>eucliadianDis;
+
+        const double shrinkFactor = 0.10;
+        //vector<vector<BoundingBox>::iterator> enclosingBoxes; // pointers to all bounding boxes which enclose the current Lidar point
+     
+            // shrink current bounding box slightly to avoid having too many outlier points around the edges
+            cv::Rect smallerBox;
+            smallerBox.x = box_x<double>(shrinkFactor, boundingBox.roi.x, boundingBox.roi.width);
+            smallerBox.y = box_y<double>(shrinkFactor, boundingBox.roi.y, boundingBox.roi.height);
+            smallerBox.width = box_width <double>(shrinkFactor, boundingBox.roi.width) ;
+            smallerBox.height = box_height <double>( shrinkFactor, boundingBox.roi.height);
+
+
+
+            // check wether point is within current bounding box
+     
+         // eof loop over all bounding boxes
+
+    for (auto it = kptMatches.begin(); it!=kptMatches.end(); ++it)
+    {
+        tempCurrKp = kptsCurr[(*it).trainIdx];
+        tempPrevKp = kptsPrev[(*it).queryIdx];
+
+        if(smallerBox.contains(tempCurrKp.pt) && smallerBox.contains(tempPrevKp .pt))
+        {
+            mtchsBB.push_back((*it));
+            eucliadianDis.push_back(cv::norm(tempCurrKp.pt-tempPrevKp.pt));
+        }
+    }
+
+    double mean = std::accumulate(eucliadianDis.begin(), eucliadianDis.end(), 0.0) / eucliadianDis.size();
+    double distTh = 1.5 * mean;
+
+    // associate best matches to given BB
+    auto it1= mtchsBB.begin();
+    for (auto it2 = eucliadianDis.begin(); it2!=eucliadianDis.end(); ++it2,++it1)
+    {
+        //cout<<"dist= "<<(*it).distance<<endl;
+        if((*it2) <  distTh  )
+        {
+            tempCurrKp = kptsCurr[(*it1).trainIdx];
+            boundingBox.kptMatches.push_back((*it1));
+            boundingBox.keypoints.push_back(tempCurrKp);
+        }
+    }
+
+    
+}
+```
+
 # 4. FP.4 Compute Camera-based TTC
 In this part we Compute the time-to-collision in second for all matched 3D objects using only keypoint correspondences from the matched bounding boxes between current and previous frame.
 
 in camFusuin_Student.cpp
+
+```cpp
+void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, 
+                      std::vector<cv::DMatch> kptMatches, double frameRate, double &TTC, cv::Mat *visImg)
+{
+    // compute distance ratios between all matched keypoints
+    vector<double> distRatios; // stores the distance ratios for all keypoints between curr. and prev. frame
+    for (auto it1 = kptMatches.begin(); it1 != kptMatches.end() - 1; ++it1)
+    { // outer kpt. loop
+       // std::cout<<it1->trainIdx<<std::endl;
+        // get current keypoint and its matched partner in the prev. frame
+        cv::KeyPoint kpOuterCurr = kptsCurr.at(it1->trainIdx);
+        cv::KeyPoint kpOuterPrev = kptsPrev.at(it1->queryIdx);
+
+        for (auto it2 = kptMatches.begin() + 1; it2 != kptMatches.end(); ++it2)
+        { // inner kpt.-loop
+
+            double minDist = 100.0; // min. required distance
+
+            // get next keypoint and its matched partner in the prev. frame
+            cv::KeyPoint kpInnerCurr = kptsCurr.at(it2->trainIdx);
+            cv::KeyPoint kpInnerPrev = kptsPrev.at(it2->queryIdx);
+
+            // compute distances and distance ratios
+            double distCurr = cv::norm(kpOuterCurr.pt - kpInnerCurr.pt);
+            //std::cout<<kpOuterCurr.pt<<std::endl;
+            double distPrev = cv::norm(kpOuterPrev.pt - kpInnerPrev.pt);
+
+            if (distPrev > std::numeric_limits<double>::epsilon() && distCurr >= minDist)
+            { // avoid division by zero
+
+                double distRatio = distCurr / distPrev;
+                distRatios.push_back(distRatio);
+            }
+        } // eof inner loop over all matched kpts
+    }     // eof outer loop over all matched kpts
+
+    // only continue if list of distance ratios is not empty
+    if (distRatios.size() == 0)
+    {
+        TTC = NAN;
+        return;
+    }
+
+    // compute camera-based TTC from distance ratios
+    //double meanDistRatio = std::accumulate(distRatios.begin(), distRatios.end(), 0.0) / distRatios.size();
+    //double median{0};
+    size_t sz = distRatios.size();
+    std::sort(distRatios.begin(), distRatios.end());
+    double median = sz%2==0? distRatios[distRatios.size() / 2]: 0.5 * (distRatios[distRatios.size() / 2 - 1] + distRatios[distRatios.size() / 2]);
+    double dT = 1 / frameRate;
+    TTC = -dT / (1 - median);
+
+    // STUDENT TASK (replacement for meanDistRatio)
+}
+```
 
 # 5. FP.5 Performance Evaluation 1
 TTC from Lidar is not always correct because of some outliers and some unstable points from preceding vehicle's front mirrors, those need to be filtered out.
