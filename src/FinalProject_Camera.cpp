@@ -19,12 +19,40 @@
 #include "objectDetection2D.hpp"
 #include "lidarData.hpp"
 #include "camFusion.hpp"
+#include <fstream>
 
 using namespace std;
 
+// Added functionality to test best detector-descriptor combination        
+vector<string> detector = {"SHITOMASI","HARRIS", "FAST", "BRISK", "ORB"};
+vector<string> descriptor = {"BRISK", "BRIEF", "ORB", "FREAK"};
+
+void pseudo_main(const string &detector, const string& descriptor,fstream &results);
+
 /* MAIN PROGRAM */
 int main(int argc, const char *argv[])
-{
+{   
+    fstream results;
+    results.open("../src/results.txt");
+    if(results){
+    cout<<"File opened successfully"<<endl;
+    results<<"Detector Type"<< " "<< "Descriptor Type" <<  " " << "TTC Camera" << " " << "TTC Lidar" << " "<< "Error"<<endl;
+    for(auto it1=detector.begin(); it1<detector.end(); it1++){
+        for(auto it2=descriptor.begin(); it2<descriptor.end(); it2++){
+            pseudo_main(*it1,*it2, results);
+
+        }
+    }
+    }
+    else{
+        cout<<"Error opening the file"<<endl;
+    }
+
+    return 0;
+}
+
+void pseudo_main(const string &detector, const string& descriptor, fstream &results){
+
     /* INIT VARIABLES AND DATA STRUCTURES */
 
     // data location
@@ -129,7 +157,7 @@ int main(int argc, const char *argv[])
         clusterLidarWithROI((dataBuffer.end()-1)->boundingBoxes, (dataBuffer.end() - 1)->lidarPoints, shrinkFactor, P_rect_00, R_rect_00, RT);
 
         // Visualize 3D objects
-        bVis = true;
+        bVis = false;
         if(bVis)
         {
             show3DObjects((dataBuffer.end()-1)->boundingBoxes, cv::Size(4.0, 20.0), cv::Size(2000, 2000), true);
@@ -150,15 +178,25 @@ int main(int argc, const char *argv[])
 
         // extract 2D keypoints from current image
         vector<cv::KeyPoint> keypoints; // create empty feature list for current image
-        string detectorType = "SHITOMASI";
+        string detectorType = detector;
 
         if (detectorType.compare("SHITOMASI") == 0)
         {
             detKeypointsShiTomasi(keypoints, imgGray, false);
         }
-        else
+        else if (detectorType.compare("HARRIS") == 0)
         {
-            //...
+            detKeypointsHarris(keypoints, imgGray, false);
+        }
+
+        // Modern detector types, including FAST, BRISK, ORB, AKAZE, and SIFT
+        else if (detectorType.compare("FAST")  == 0 ||
+                 detectorType.compare("BRISK") == 0 ||
+                 detectorType.compare("ORB")   == 0 ||
+                 detectorType.compare("AKAZE") == 0 ||
+                 detectorType.compare("SIFT")  == 0)
+        {
+            detKeypointsModern(keypoints, imgGray, detectorType, false);
         }
 
         // optional : limit number of keypoints (helpful for debugging and learning)
@@ -184,7 +222,7 @@ int main(int argc, const char *argv[])
         /* EXTRACT KEYPOINT DESCRIPTORS */
 
         cv::Mat descriptors;
-        string descriptorType = "BRISK"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
+        string descriptorType = descriptor; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
         descKeypoints((dataBuffer.end() - 1)->keypoints, (dataBuffer.end() - 1)->cameraImg, descriptors, descriptorType);
 
         // push descriptors for current frame to end of data buffer
@@ -266,8 +304,9 @@ int main(int argc, const char *argv[])
                     clusterKptMatchesWithROI(*currBB, (dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints, (dataBuffer.end() - 1)->kptMatches);                    
                     computeTTCCamera((dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints, currBB->kptMatches, sensorFrameRate, ttcCamera);
                     //// EOF STUDENT ASSIGNMENT
-
-                    bVis = true;
+                    results<<detector<< " "<< descriptor <<  " " << ttcCamera << " " << ttcLidar << " "<< (ttcCamera-ttcLidar)<<endl;
+                    continue;
+                    bVis = false;
                     if (bVis)
                     {
                         cv::Mat visImg = (dataBuffer.end() - 1)->cameraImg.clone();
@@ -293,5 +332,4 @@ int main(int argc, const char *argv[])
 
     } // eof loop over all images
 
-    return 0;
 }
